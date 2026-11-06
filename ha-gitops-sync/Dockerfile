@@ -10,9 +10,12 @@ RUN pip3 install --no-cache-dir --requirement /tmp/requirements.txt && rm /tmp/r
 
 COPY --chmod=755 run.sh /
 COPY ha_gitops_sync /app/ha_gitops_sync
+# s6-overlay hands a stop to the add-on first instead of killing it 3 s after the rest, so a running deploy finishes
+# within config.yaml's timeout.
 ENV PYTHONPATH=/app \
     PYTHONUNBUFFERED=1 \
-    PYTHONDONTWRITEBYTECODE=1
+    PYTHONDONTWRITEBYTECODE=1 \
+    S6_CMD_RECEIVE_SIGNALS=1
 
 # With the add-on's Watchdog switch on, the Supervisor restarts the add-on when this check fails.
 HEALTHCHECK --interval=30s --timeout=10s --start-period=120s \

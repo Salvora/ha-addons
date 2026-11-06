@@ -53,7 +53,7 @@ def main() -> None:
     capture = Capture(git, gitea, supervisor, state, worker)
     deploy = Deploy(git, gitea, supervisor, state, capture)
     control = Control(supervisor, state)
-    reconcile = Reconcile(git, options.remote_url, state, capture)
+    reconcile = Reconcile(git, options.remote_url, state, capture, deploy)
     try:
         worker.submit(reconcile.attach, "attaching /config").result()
     except StartError as e:

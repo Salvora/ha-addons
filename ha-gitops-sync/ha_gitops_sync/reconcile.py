@@ -1,10 +1,12 @@
-"""Start-up and daily: attach /config on the first start, recover after a backup restore, catch up on drift."""
+"""Start-up and daily: attach /config on the first start, put back a deploy cut off by a stop, recover after a backup
+restore, catch up on drift."""
 
 from __future__ import annotations
 
 import logging
 
 from ha_gitops_sync.capture import Capture
+from ha_gitops_sync.deploy import Deploy
 from ha_gitops_sync.git import NAME, Git, GitError
 from ha_gitops_sync.state import Outcome, Result, State
 from ha_gitops_sync.worktree import apply_sparse, nested_repositories
@@ -20,11 +22,12 @@ class StartError(RuntimeError):
 
 
 class Reconcile:
-    def __init__(self, git: Git, remote_url: str, state: State, capture: Capture):
+    def __init__(self, git: Git, remote_url: str, state: State, capture: Capture, deploy: Deploy):
         self.git = git
         self.remote_url = remote_url
         self.state = state
         self.capture = capture
+        self.deploy = deploy
 
     def attach(self) -> None:
         """Connects /config to the repository: HEAD and the index move, and the files stay, except that the first
@@ -61,5 +64,6 @@ class Reconcile:
             raise StartError(f"nested repositories in /config: {', '.join(nested)}; git would not track their files")
 
     def run(self) -> None:
+        self.deploy.recover()
         if self.capture.run() is None:
             self.capture.publish()

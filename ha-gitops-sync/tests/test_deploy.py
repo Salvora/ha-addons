@@ -125,6 +125,54 @@ def test_without_a_passing_check_the_files_are_put_back(system, failing, down, o
         assert system.supervisor.events[-1][0] == "gitops_deploy_failed"
 
 
+class Stopped(BaseException):
+    """The add-on's process ending: none of its own handlers run."""
+
+
+def stop():
+    raise Stopped
+
+
+def test_a_deploy_stopped_during_its_check_is_put_back_at_the_next_start_and_never_pushed(system):
+    before = system.read("automations.yaml")
+    live = system.remote_rev("live")
+    sha = checked(system, {"automations.yaml": "broken: [\n"})
+    system.supervisor.on_check = stop
+
+    with pytest.raises(Stopped):
+        system.deploy.run(Request(sha, "manual", run_url="https://gitea.example/run/8"), "alex")
+    started = system.start_again()
+
+    assert started.read("automations.yaml") == before
+    assert started.head() == live == started.remote_rev("live")
+    assert started.git.run("status", "--porcelain") == ""
+    assert started.gitea.deploy_statuses == [(sha, "failure")]
+    assert started.supervisor.events == [("gitops_deploy_failed", {"commit": sha, "by": "alex"})]
+    entry = started.state.history()[0]
+    assert (entry.action, entry.by, entry.link, entry.result.outcome, entry.result.message) == (
+        "deploy",
+        "alex",
+        "https://gitea.example/run/8",
+        Outcome.ERROR,
+        f"Deploying {sha[:7]} was cut off before its config check ended; the files were put back.",
+    )
+
+
+@pytest.mark.parametrize("failing", [None, "Invalid config for [automation]"])
+def test_a_deploy_that_ended_leaves_nothing_to_put_back_at_the_next_start(system, failing):
+    sha = checked(system, {"automations.yaml": "- id: '2'\n"})
+    system.supervisor.failing_check = failing
+    system.deploy.run(Request(sha, "manual"), "alex")
+    files, head = system.read("automations.yaml"), system.head()
+
+    started = system.start_again()
+
+    assert (started.read("automations.yaml"), started.head()) == (files, head)
+    assert started.gitea.deploy_statuses == []
+    assert started.state.history()[0].action == "deploy"
+    assert started.state.history()[0].result.outcome is (Outcome.CHECK_FAILED if failing else Outcome.DEPLOYED)
+
+
 def test_an_edit_made_while_the_check_ran_survives_the_put_back(system):
     before = system.read("automations.yaml")
     sha = checked(system, {"automations.yaml": "broken: [\n"})

@@ -10,7 +10,7 @@ from ha_gitops_sync.api import ApiError
 from ha_gitops_sync.capture import Capture
 from ha_gitops_sync.git import Git, GitError
 from ha_gitops_sync.gitea import CHECKS, Gitea
-from ha_gitops_sync.state import Outcome, Result, State, Switch
+from ha_gitops_sync.state import Outcome, Placed, Result, State, Switch
 from ha_gitops_sync.supervisor import CheckFailed, Supervisor, Unavailable
 from ha_gitops_sync.worktree import apply_sparse, changes, listed, refresh, repository_only
 
@@ -26,10 +26,12 @@ DEPLOY_STATUS = {
     Outcome.DIRTY: "failure",
     Outcome.CONFLICT: "failure",
     Outcome.CHECK_FAILED: "failure",
+    Outcome.ERROR: "failure",
 }
 EVENTS = {
     Outcome.DEPLOYED: "gitops_deployed",
     Outcome.CHECK_FAILED: "gitops_deploy_failed",
+    Outcome.ERROR: "gitops_deploy_failed",
     Outcome.CONFLICT: "gitops_conflict",
 }
 
@@ -76,7 +78,7 @@ class Deploy:
 
     def run(self, request: Request, by: str) -> Result:
         try:
-            result = self._deploy(request)
+            result = self._deploy(request, by)
         except GitError as e:
             result = Result(Outcome.ERROR, f"Deploying {request.sha[:7]} stopped: {e}")
         log.info("deploy %s by %s: %s", request.sha[:7], by, result.message)
@@ -84,7 +86,23 @@ class Deploy:
         self._report(request, result, by)
         return result
 
-    def _deploy(self, request: Request) -> Result:
+    def recover(self) -> None:
+        """Puts back a deploy whose config check never ended because the add-on stopped, before anything pushes it."""
+        placed = self.state.placed()
+        if placed is None:
+            return
+        kept = self._put_back(placed.previous)
+        result = Result(
+            Outcome.ERROR,
+            f"Deploying {placed.sha[:7]} was cut off before its config check ended; the files were put back"
+            f"{_except(kept)}.",
+            files=kept,
+        )
+        log.warning(result.message)
+        self.state.record("deploy", result, placed.by, placed.run_url)
+        self._report(placed, result, placed.by)
+
+    def _deploy(self, request: Request, by: str) -> Result:
         sha, short = request.sha, request.sha[:7]
         if request.trigger == "merge" and not self.state.is_on(Switch.AUTO_DEPLOY):
             return Result(Outcome.PAUSED, f"Auto-deploy is paused in the panel; {short} waits for a manual deploy.")
@@ -114,15 +132,15 @@ class Deploy:
             )
         if pending:
             self.capture.run()
-        return self._place(request)
+        return self._place(request, by)
 
-    def _place(self, request: Request) -> Result:
+    def _place(self, request: Request, by: str) -> Result:
         sha, short, previous = request.sha, request.sha[:7], self.git.rev("HEAD")
         refresh(self.git)
         if self.git.is_ancestor("HEAD", sha):
-            self.git.run("merge", "--ff-only", "--quiet", sha)
+            merge = ("--ff-only",)
         elif self.git.check("merge-tree", "--write-tree", "--name-only", "HEAD", sha):
-            self.git.run("merge", "--no-ff", "--quiet", "--message", f"Deploy {short}: merge main into live", sha)
+            merge = ("--no-ff", "--message", f"Deploy {short}: merge main into live")
         else:
             return Result(
                 Outcome.CONFLICT,
@@ -130,6 +148,8 @@ class Deploy:
                 "from live with main merged in, merged into main with a merge commit; that merge deploys.",
                 pull_request=self._pull_request(),
             )
+        self.state.set_placed(Placed(previous, sha, by, request.run_url, request.impact))
+        self.git.run("merge", "--quiet", *merge, sha)
         apply_sparse(self.git)
         try:
             self.supervisor.check()
@@ -148,6 +168,7 @@ class Deploy:
                 f"Home Assistant did not run the config check: {e}; the files were put back{_except(kept)}.",
                 files=kept,
             )
+        self.state.set_placed(None)
         published = self.capture.publish()
         files = self.git.run("diff", "--name-only", "-z", previous, "HEAD").split("\0")
         subject = self.git.run("log", "-1", "--format=%s", sha).strip()
@@ -182,6 +203,7 @@ class Deploy:
             if path not in edited and kind == "A":
                 self._delete(path)
         apply_sparse(self.git)
+        self.state.set_placed(None)
         return tuple(sorted(edited & placed.keys()))
 
     def _delete(self, path: str) -> None:
@@ -201,7 +223,7 @@ class Deploy:
             return ""
         return pull["html_url"] if pull else ""
 
-    def _report(self, request: Request, result: Result, by: str) -> None:
+    def _report(self, request: Request | Placed, result: Result, by: str) -> None:
         if state := DEPLOY_STATUS.get(result.outcome):
             try:
                 self.gitea.set_status(request.sha, state, result.message, request.run_url)

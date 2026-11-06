@@ -1,4 +1,5 @@
-"""What every action ends in, and /data/state.json: the panel's two switches and the last 50 results."""
+"""What every action ends in, and /data/state.json: the panel's two switches, the last 50 results, and the deploy
+whose config check is running."""
 
 from __future__ import annotations
 
@@ -81,6 +82,17 @@ class Entry:
     link: str = ""
 
 
+@dataclass(frozen=True)
+class Placed:
+    """A deploy whose config check is running, and previous, the commit to put back if the check never ends."""
+
+    previous: str
+    sha: str
+    by: str
+    run_url: str = ""
+    impact: str = ""
+
+
 def _entry(saved: dict) -> Entry:
     result = saved["result"] | {
         "outcome": Outcome(saved["result"]["outcome"]),
@@ -96,10 +108,19 @@ class State:
         saved = json.loads(path.read_text()) if path.exists() else {}
         self._switches = dict.fromkeys(Switch, False) | saved.get("switches", {})
         self._history = [_entry(item) for item in saved.get("history", [])]
+        self._placed = Placed(**saved["placed"]) if saved.get("placed") else None
 
     def _save(self) -> None:
+        saved = {
+            "switches": self._switches,
+            "history": [asdict(e) for e in self._history],
+            "placed": asdict(self._placed) if self._placed else None,
+        }
         tmp = self.path.with_suffix(".tmp")
-        tmp.write_text(json.dumps({"switches": self._switches, "history": [asdict(e) for e in self._history]}))
+        with tmp.open("w") as file:
+            json.dump(saved, file)
+            file.flush()
+            os.fsync(file.fileno())
         os.replace(tmp, self.path)
 
     def is_on(self, switch: Switch) -> bool:
@@ -115,6 +136,15 @@ class State:
         kept = replace(result, output=result.output[-KEPT_OUTPUT:])
         with self._lock:
             self._history = [Entry(time.time(), action, by, kept, link), *self._history][:HISTORY]
+            self._save()
+
+    def placed(self) -> Placed | None:
+        with self._lock:
+            return self._placed
+
+    def set_placed(self, placed: Placed | None) -> None:
+        with self._lock:
+            self._placed = placed
             self._save()
 
     def history(self) -> list[Entry]:

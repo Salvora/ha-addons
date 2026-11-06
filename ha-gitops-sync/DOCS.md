@@ -55,7 +55,7 @@ the page opens. While an action runs, the page refreshes itself until the result
 3. Places the files: a fast-forward, or a merge with Home Assistant's edits. A conflict is refused and `/config`
    stays untouched; resolve it as under **When something goes wrong**.
 4. Runs the Supervisor's config check on the placed files. If it fails, or Home Assistant does not answer, the files
-   are put back.
+   are put back. If the add-on stops before the check ends, it puts them back when it starts again.
 5. Pushes `live`, and `main` too when the deploy merged; sets the commit status `ha/deploy`; fires `gitops_deployed`.
    It never reloads or restarts.
 

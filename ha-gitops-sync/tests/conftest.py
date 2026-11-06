@@ -246,6 +246,14 @@ class System:
     def head(self) -> str:
         return git(self.root, "rev-parse", "HEAD").strip()
 
+    def start_again(self) -> System:
+        """This add-on stopped and a new one starts on the same /config and /data, as app.py does."""
+        self.worker.shutdown()
+        system = wire(self.root.parent)
+        system.reconcile.attach()
+        system.reconcile.run()
+        return system
+
 
 def build(base: Path) -> None:
     """The repository with the uploaded config on main, a developer's clone, and /config as Home Assistant has it:
@@ -279,6 +287,7 @@ def wire(base: Path) -> System:
     state, worker = State(base / "state.json"), Worker()
     repo = Git(root, "token-that-never-shows")
     capture = Capture(repo, gitea, supervisor, state, worker)
+    deploy = Deploy(repo, gitea, supervisor, state, capture)
     return System(
         root=root,
         remote=remote,
@@ -289,9 +298,9 @@ def wire(base: Path) -> System:
         worker=worker,
         git=repo,
         capture=capture,
-        deploy=Deploy(repo, gitea, supervisor, state, capture),
+        deploy=deploy,
         control=Control(supervisor, state),
-        reconcile=Reconcile(repo, str(remote), state, capture),
+        reconcile=Reconcile(repo, str(remote), state, capture, deploy),
     )
 
 
