@@ -71,8 +71,10 @@ restored files are committed on top of `live`.
 
 ## The API for Gitea Actions
 
-HTTPS on port 8765, each request signed with the deploy or control key; the config repository's workflows call it. A
-request that is too old, replayed, signed with the other key or from a source not in `allowed_sources` gets 401.
+HTTPS on port 8765, each request signed with the deploy or control key; the config repository's workflows call it.
+`X-GitOps-Timestamp` is the Unix time in seconds, and `X-GitOps-Signature` is `sha256=` followed by the hex
+HMAC-SHA256 of `<timestamp>.<path>.<body>`, such as `1767225600./api/check.{}`. A request that is too old, replayed,
+signed with the other key or for another path, or from a source not in `allowed_sources` gets 401.
 
 ## Events
 
