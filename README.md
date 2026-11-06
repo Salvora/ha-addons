@@ -4,7 +4,7 @@ A Home Assistant add-on (app) repository.
 
 | Add-on | What it does |
 | --- | --- |
-| ha-gitops-sync (first release in progress) | Keeps Home Assistant's `/config` and a Git repository in step, both ways: deploys merged changes once CI has checked them, commits edits made in Home Assistant, and reloads or restarts only when asked, after a config check |
+| [HA GitOps Sync](ha-gitops-sync) | Keeps Home Assistant's `/config` and a Git repository in step, both ways: deploys merged changes once CI has checked them, commits edits made in Home Assistant, and reloads or restarts only when asked, after a config check |
 
 ## Installing
 

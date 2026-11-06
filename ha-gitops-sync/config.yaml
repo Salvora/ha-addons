@@ -1,0 +1,41 @@
+name: HA GitOps Sync
+version: "1.0.0"
+slug: ha_gitops_sync
+description: Keeps /config and its Gitea repository in step, both ways
+url: https://github.com/Salvora/ha-addons/tree/main/ha-gitops-sync
+arch:
+  - amd64
+image: ghcr.io/salvora/ha-gitops-sync
+# The base image's s6-overlay v3 runs the CMD; Docker's own init would stop it from starting.
+init: false
+timeout: 300
+ingress: true
+panel_icon: mdi:source-branch-sync
+panel_title: GitOps
+homeassistant_api: true
+hassio_api: true
+hassio_role: homeassistant
+map:
+  - type: homeassistant_config
+    read_only: false
+    path: /config
+  - type: ssl
+ports:
+  8765/tcp: 8765
+options:
+  gitea_url: null
+  repository: null
+  gitea_token: null
+  deploy_key: null
+  control_key: null
+  allowed_sources: []
+  log_level: info
+schema:
+  gitea_url: url
+  repository: 'match(^[\w.-]+/[\w.-]+$)'
+  gitea_token: password
+  deploy_key: password
+  control_key: password
+  allowed_sources:
+    - str
+  log_level: list(debug|info|warning|error)

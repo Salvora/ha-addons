@@ -1,0 +1,32 @@
+configuration:
+  gitea_url:
+    name: Gitea URL
+    description: The address of your Gitea, such as https://git.example.org.
+  repository:
+    name: Repository
+    description: The config repository, as owner/name.
+  gitea_token:
+    name: Gitea token
+    description: >-
+      A token of the add-on's own Gitea account, with write access to the repository. It is passed to git per command
+      and never stored in /config/.git or shown in the log.
+  deploy_key:
+    name: Deploy key
+    description: >-
+      Signs deploy requests from Gitea Actions; the same value as the Actions secret HA_GITOPS_DEPLOY_KEY. At least
+      32 characters, for example from `openssl rand -hex 32`.
+  control_key:
+    name: Control key
+    description: >-
+      Signs check, reload and restart requests; the same value as the Actions secret HA_GITOPS_CONTROL_KEY. At least
+      32 characters, and not the deploy key.
+  allowed_sources:
+    name: Allowed sources
+    description: >-
+      Addresses or networks (CIDR) allowed to call the signed API, such as your Actions runner's. Empty allows no
+      caller.
+  log_level:
+    name: Log level
+    description: How much the add-on writes to its log.
+network:
+  8765/tcp: The signed HTTPS API that Gitea Actions calls to deploy, check, reload and restart.

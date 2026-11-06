@@ -1,0 +1,319 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>GitOps</title>
+<style>
+:root {
+  color-scheme: light dark;
+  --primary: #006787;
+  --on-primary: #fff;
+  --danger: #c62828;
+  --on-danger: #fff;
+  --bg: #fafafa;
+  --card: #fff;
+  --text: #212121;
+  --muted: #727272;
+  --divider: #e0e0e0;
+  --chip: #f5f5f5;
+  --ok: #2e7d32;
+  --warn: #b45309;
+  --error: #c62828;
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --primary: #03a9f4;
+    --on-primary: #111;
+    --bg: #111;
+    --card: #1c1c1c;
+    --text: #e1e1e1;
+    --muted: #9b9b9b;
+    --divider: #2f2f2f;
+    --chip: #2a2a2a;
+    --ok: #66bb6a;
+    --warn: #ef8c00;
+    --error: #ff7a6e;
+  }
+}
+* { box-sizing: border-box; }
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--text);
+  font: 14px/1.5 Roboto, Noto, system-ui, -apple-system, "Segoe UI", sans-serif;
+  -webkit-font-smoothing: antialiased;
+}
+a { color: var(--primary); text-decoration: none; }
+a:hover { text-decoration: underline; }
+header {
+  display: flex; flex-wrap: wrap; align-items: center; gap: 8px 24px;
+  min-height: 56px; padding: 8px 16px;
+  background: var(--card); border-bottom: 1px solid var(--divider);
+}
+header h1 { flex: 1; margin: 0; font-size: 20px; font-weight: 400; }
+.switches { display: flex; flex-wrap: wrap; gap: 8px 24px; }
+main { display: grid; gap: 16px; max-width: 960px; margin: 0 auto; padding: 16px; }
+.card { background: var(--card); border: 1px solid var(--divider); border-radius: 12px; overflow: hidden; }
+.card h2 { margin: 0; padding: 16px 16px 8px; font-size: 16px; font-weight: 500; }
+.card p { margin: 0; padding: 0 16px 16px; color: var(--muted); }
+.status { display: grid; grid-template-columns: minmax(150px, 200px) 1fr; margin: 0; }
+.status dt, .status dd { margin: 0; padding: 12px 16px; border-top: 1px solid var(--divider); }
+.status dt { color: var(--muted); }
+.status form { margin-top: 8px; }
+.sha { font-family: ui-monospace, "Roboto Mono", monospace; font-size: 13px; }
+.muted { color: var(--muted); }
+.files { margin: 4px 0 0; padding-left: 20px; overflow-wrap: anywhere; }
+.chips { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 4px; }
+.chip { padding: 0 10px; border-radius: 12px; background: var(--chip); font-size: 12px; line-height: 24px; }
+.chip.ok { color: var(--ok); }
+.chip.warn { color: var(--warn); }
+.chip.error { color: var(--error); }
+.actions { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; padding: 8px 16px 16px; }
+.actions form { display: flex; align-items: center; gap: 8px; margin: 0; }
+button, .button, select {
+  font: inherit; font-weight: 500; height: 36px; padding: 0 16px; border-radius: 18px; cursor: pointer;
+  border: 1px solid var(--divider); background: transparent; color: var(--primary);
+  display: inline-flex; align-items: center;
+}
+.button:hover { text-decoration: none; }
+select { color: var(--text); background: var(--card); border-radius: 8px; padding: 0 8px; }
+button.primary { background: var(--primary); border-color: var(--primary); color: var(--on-primary); }
+button.danger { background: var(--danger); border-color: var(--danger); color: var(--on-danger); }
+.restart { color: var(--error); }
+button:disabled { opacity: .45; cursor: default; }
+button:focus-visible, .button:focus-visible, select:focus-visible { outline: 2px solid var(--primary); outline-offset: 2px; }
+.switch { margin: 0; }
+.switch button { border: 0; padding: 0 4px; gap: 10px; color: var(--text); font-weight: 400; }
+.track { position: relative; width: 36px; height: 14px; border-radius: 7px; background: var(--muted); opacity: .6; }
+.knob {
+  position: absolute; top: -3px; left: -2px; width: 20px; height: 20px; border-radius: 50%;
+  background: #fafafa; box-shadow: 0 1px 3px rgba(0, 0, 0, .4); transition: left .15s;
+}
+[aria-checked="true"] .track { background: var(--primary); opacity: .5; }
+[aria-checked="true"] .knob { left: 18px; background: var(--primary); }
+.state { min-width: 48px; color: var(--muted); font-size: 12px; text-align: left; }
+.banner {
+  display: flex; align-items: center; gap: 12px; padding: 12px 16px; border-radius: 12px;
+  background: var(--card); border: 1px solid var(--primary);
+}
+.banner.warn { border-color: var(--warn); }
+.card .banner { margin: 0 16px 16px; padding: 12px 16px; color: var(--text); }
+.spinner {
+  width: 18px; height: 18px; flex: none; border-radius: 50%;
+  border: 2px solid var(--divider); border-top-color: var(--primary); animation: spin 1s linear infinite;
+}
+@keyframes spin { to { transform: rotate(360deg); } }
+@media (prefers-reduced-motion: reduce) { .spinner { animation: none; } .knob { transition: none; } }
+.history { list-style: none; margin: 0; padding: 0; }
+.history li {
+  display: grid; grid-template-columns: 96px 72px 1fr; gap: 4px 12px;
+  padding: 10px 16px; border-top: 1px solid var(--divider);
+}
+.history time { color: var(--muted); font-variant-numeric: tabular-nums; }
+.history .action { font-weight: 500; }
+.history .ok .action { color: var(--ok); }
+.history .warn .action { color: var(--warn); }
+.history .error .action { color: var(--error); }
+.history .meta { grid-column: 3; color: var(--muted); font-size: 12px; }
+.history .meta a { text-decoration: underline; }
+.history details { grid-column: 1 / -1; }
+.history pre {
+  margin: 8px 0 0; padding: 12px; overflow-x: auto; max-height: 320px;
+  background: var(--chip); border-radius: 8px; font-size: 12px; white-space: pre-wrap;
+}
+@media (max-width: 600px) {
+  .status { grid-template-columns: 1fr; }
+  .status dd { border-top: 0; padding-top: 0; }
+  .history li { grid-template-columns: max-content 1fr; }
+  .history .message, .history .meta { grid-column: 1 / -1; }
+}
+</style>
+</head>
+{% macro names(paths) -%}
+{% if paths | length <= 5 %}{{ paths | join(", ") }}{% else %}<details><summary>{{ paths | length }} files</summary><ul class="files">{% for path in paths %}<li>{{ path }}</li>{% endfor %}</ul></details>{% endif %}
+{%- endmacro %}
+{% macro checks_chip(checks) -%}
+{% if checks == "success" %}<span class="chip ok">checks passed</span>{% elif checks in ("failure", "error") %}<span class="chip error">checks failed</span>{% else %}<span class="chip warn">checks not passed yet</span>{% endif %}
+{%- endmacro %}
+<body>
+<header>
+  <h1>GitOps</h1>
+  <div class="switches">
+  {% for switch, label, on in switches %}
+  <form method="post" action="{{ base }}/switch" class="switch">
+    <input type="hidden" name="csrf" value="{{ csrf }}">
+    <input type="hidden" name="switch" value="{{ switch }}">
+    <input type="hidden" name="on" value="{{ 0 if on else 1 }}">
+    <button type="submit" role="switch" aria-checked="{{ 'true' if on else 'false' }}" title="{{ 'Pause' if on else 'Switch on' }} {{ label | lower }}">
+      <span>{{ label }}</span><span class="track"><span class="knob"></span></span><span class="state" aria-hidden="true">{{ "On" if on else "Paused" }}</span>
+    </button>
+  </form>
+  {% endfor %}
+  </div>
+</header>
+<main>
+  {% if refused %}
+  <div class="banner warn" role="alert">{{ refused }}</div>
+  <script>history.replaceState(null, "", {{ (base ~ "/") | tojson }});</script>
+  {% endif %}
+  {% if running %}
+  <div class="banner" role="status">
+    <span class="spinner"></span>
+    <span>Running: {{ running[0] }}{% if running | length > 1 %}; then {{ running[1:] | join(", ") }}{% endif %}</span>
+  </div>
+  {% endif %}
+
+  <section class="card">
+    <h2>Status</h2>
+    {% if stale %}<p class="banner warn" role="status">{{ stale }}{% if view %} Showing the status read at {{ clock(view.at) }}.{% endif %}</p>{% endif %}
+    {% if waiting %}<p class="muted" role="status">The status is read once the running action has finished{% if view %}; showing the status read at {{ clock(view.at) }}{% endif %}.</p>{% endif %}
+    {% if view %}
+    <dl class="status">
+      <dt>Live on Home Assistant</dt>
+      <dd>
+        <a class="sha" href="{{ commit_url(view.live.sha) }}" target="_blank" rel="noopener">{{ view.live.sha[:7] }}</a>
+        {{ view.live.subject }} <span class="muted">· committed {{ clock(view.live.at) }}</span>
+      </dd>
+      <dt>Main in Gitea</dt>
+      <dd>
+        {% if view.main %}
+        <a class="sha" href="{{ commit_url(view.main.sha) }}" target="_blank" rel="noopener">{{ view.main.sha[:7] }}</a>
+        {{ view.main.subject }} <span class="muted">· committed {{ clock(view.main.at) }}</span>
+        <div class="chips">
+          {% if not view.fetched %}<span class="chip warn">Gitea is not answering; showing main as last fetched.</span>{% endif %}
+          {% if not view.gitea %}<span class="chip warn">{{ gitea_down }}</span>{% endif %}
+          {% if view.waiting %}
+          <span class="chip">{{ view.waiting }} commit{{ "s" if view.waiting != 1 }} waiting</span>
+          {% if view.gitea %}
+          {% if view.checks_url %}<a href="{{ view.checks_url }}" target="_blank" rel="noopener">{{ checks_chip(view.checks) }}</a>{% else %}{{ checks_chip(view.checks) }}{% endif %}
+          {% if view.impact %}<span class="chip">needs: {{ view.impact }}</span>{% endif %}
+          {% endif %}
+          {% elif view.fetched %}
+          <span class="chip ok">live</span>
+          {% endif %}
+        </div>
+        {% if view.waiting %}
+        <form method="post" action="{{ base }}/deploy">
+          <input type="hidden" name="csrf" value="{{ csrf }}">
+          <input type="hidden" name="sha" value="{{ view.main.sha }}">
+          <input type="hidden" name="impact" value="{{ view.impact }}">
+          <button class="primary" type="submit"{% if deploy_refused %} aria-describedby="deploy-refused"{% endif %}{% if view.checks != "success" or running or deploy_refused %} disabled{% endif %}>Deploy {{ view.main.sha[:7] }}</button>
+          {% if deploy_refused %}<span id="deploy-refused" class="muted">{{ deploy_refused }}</span>{% endif %}
+        </form>
+        {% endif %}
+        {% else %}
+        <span class="muted">No main branch fetched.</span>
+        {% endif %}
+      </dd>
+      <dt>Home Assistant edits</dt>
+      <dd>
+        {% if view.edits.files %}
+        {{ view.edits.files | length }} file{{ "s" if view.edits.files | length != 1 }} not committed yet
+        <span class="muted">· {{ "captured after a minute of quiet" if capture_on else "capture is paused" }}</span>
+        <div>{{ names(view.edits.files) }}</div>
+        {% elif view.unpushed %}
+        {{ view.unpushed }} commit{{ "s" if view.unpushed != 1 }} waiting to be pushed
+        {% else %}
+        none waiting to be pushed
+        {% endif %}
+        {% if view.edits.skipped %}
+        <div>left out: {{ names(view.edits.skipped) }}</div>
+        <div class="muted">Repository-only, new files over 20 MB, or nested repositories. Add large files to .gitignore.</div>
+        {% endif %}
+      </dd>
+      <dt>live → main</dt>
+      <dd>
+        {% if view.pull_request %}
+        <a href="{{ view.pull_request.html_url }}" target="_blank" rel="noopener">#{{ view.pull_request.number }} {{ view.pull_request.title }}</a>
+        {% elif view.gitea and view.fetched %}
+        no pull request open
+        {% else %}
+        pull request unknown
+        {% endif %}
+        {% if view.conflict %}<span class="chip error">conflict</span>{% endif %}
+      </dd>
+    </dl>
+    {% endif %}
+  </section>
+
+  {% if confirm == "restart" %}
+  <section class="card">
+    <h2>Restart Home Assistant?</h2>
+    <p>The config is checked first, and Home Assistant restarts only if the check passes. It is unavailable until it is back. The panel updates by itself once Home Assistant is back.</p>
+    <div class="actions">
+      <a class="button" href="{{ base }}/">Cancel</a>
+      <form method="post" action="{{ base }}/restart">
+        <input type="hidden" name="csrf" value="{{ csrf }}">
+        <button class="danger" type="submit"{% if running %} disabled{% endif %}>Restart</button>
+      </form>
+    </div>
+  </section>
+  {% else %}
+  <section class="card">
+    <h2>Actions</h2>
+    <p>Reload and restart run only after the config check passes.</p>
+    <div class="actions">
+      <form method="post" action="{{ base }}/check">
+        <input type="hidden" name="csrf" value="{{ csrf }}">
+        <button type="submit"{% if running %} disabled{% endif %}>Check config</button>
+      </form>
+      <form method="post" action="{{ base }}/reload">
+        <input type="hidden" name="csrf" value="{{ csrf }}">
+        <select name="target" aria-label="Reload target">
+          {% for name in (view.targets if view else ["all"]) %}<option value="{{ name }}"{% if name == target %} selected{% endif %}>{{ named[name].label if name in named else name }}</option>{% endfor %}
+        </select>
+        <button type="submit"{% if running %} disabled{% endif %}>Reload</button>
+      </form>
+      {% if running %}
+      <button type="button" class="restart" disabled>Restart…</button>
+      {% else %}
+      <a class="button restart" href="{{ base }}/?confirm=restart">Restart…</a>
+      {% endif %}
+    </div>
+  </section>
+  {% endif %}
+
+  <section class="card">
+    <h2>Recent</h2>
+    <ul class="history">
+      {% for entry in history %}
+      <li class="{{ tone(entry.result.outcome) }}">
+        <time>{{ clock(entry.at) }}</time>
+        <span class="action">{{ entry.action }}</span>
+        <span class="message">{{ entry.result.message }}</span>
+        <span class="meta">
+          by {{ entry.by }}
+          {% if entry.result.live %}· <a class="sha" href="{{ commit_url(entry.result.live) }}" target="_blank" rel="noopener">{{ entry.result.live[:7] }}</a>{% endif %}
+          {% if entry.result.pull_request %}· <a href="{{ entry.result.pull_request }}" target="_blank" rel="noopener">pull request</a>{% endif %}
+          {% if entry.link %}· <a href="{{ entry.link }}" target="_blank" rel="noopener">run</a>{% endif %}
+        </span>
+        {% if entry.result.files %}
+        <details><summary>{{ entry.result.files | length }} file{{ "s" if entry.result.files | length != 1 }}</summary><ul class="files">{% for path in entry.result.files %}<li>{{ path }}</li>{% endfor %}</ul></details>
+        {% endif %}
+        {% if entry.result.output %}
+        <details><summary>Check output</summary><pre>{{ entry.result.output }}</pre></details>
+        {% endif %}
+      </li>
+      {% else %}
+      <li><span></span><span></span><span class="muted">Nothing yet.</span></li>
+      {% endfor %}
+    </ul>
+  </section>
+</main>
+{% if running %}
+<script>
+setTimeout(function poll() {
+  var shown = {{ running | tojson }};
+  fetch({{ (base ~ "/jobs") | tojson }}, {cache: "no-store"})
+    .then(function (answer) { return answer.json(); })
+    .then(function (jobs) {
+      if (JSON.stringify(jobs.running) !== JSON.stringify(shown)) location.reload();
+      else setTimeout(poll, 3000);
+    })
+    .catch(function () { setTimeout(poll, 3000); });
+}, 3000);
+</script>
+{% endif %}
+</body>
+</html>
