@@ -1,0 +1,79 @@
+name: check
+# Checks every pull request to main: ruff and pytest in the add-on's own base image, hadolint, actionlint and
+# shellcheck, the repository's rules for add-on folders (python3 -m addons check) and Home Assistant's add-on linter.
+on:
+  pull_request:
+    branches: [main]
+
+concurrency:
+  group: check-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+defaults:
+  run:
+    shell: bash
+
+jobs:
+  python:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+      - name: ruff finds nothing and the tests pass on the add-on's Python
+        # The FROM of ha-gitops-sync/Dockerfile, so the tests run on the add-on's Python and Alpine; renovate.json
+        # moves the two together.
+        uses: docker://ghcr.io/home-assistant/base-python:3.14-alpine3.24@sha256:9022b084ccaa3383cf171cf26a24ce277aeacbdf3e8c5022b6d89e0492a3a897
+        with:
+          entrypoint: /bin/sh
+          args: ci/check.sh python
+
+  dockerfile:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+      - name: hadolint finds nothing in the Dockerfile
+        uses: docker://hadolint/hadolint:v2.15.1-alpine@sha256:a1d49ae1a4e83c1dbad26b8c1ad7588c8bd1e04f4866b34ad3cac50335198552
+        with:
+          entrypoint: /bin/hadolint
+          args: ha-gitops-sync/Dockerfile
+
+  workflows:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+      - name: actionlint and shellcheck find nothing
+        uses: docker://rhysd/actionlint:1.7.12@sha256:b1934ee5f1c509618f2508e6eb47ee0d3520686341fec936f3b79331f9315667
+        with:
+          entrypoint: /bin/sh
+          args: ci/check.sh workflows
+
+  addons:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          fetch-depth: 0 # the base branch, which a changed add-on's version is compared with
+          persist-credentials: false
+      - name: Python packages are installed
+        run: bash ci/setup-python.sh
+      - name: Changed add-ons raise their version with a changelog section; options are described; images are sane
+        run: python3 -m addons check
+        env:
+          PYTHONPATH: ci
+          BASE: origin/${{ github.base_ref }}
+      - name: config.yaml passes Home Assistant's add-on linter
+        uses: frenck/action-app-linter@b9cfd1bc62ba60d2c4fc96317b5f7ada5923f4a7 # v2.21.1
+        with:
+          path: ./ha-gitops-sync

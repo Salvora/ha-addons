@@ -1,0 +1,4 @@
+ignored:
+  # DL3018: apk packages are not version-pinned on purpose. The base image is pinned by digest (Renovate), and its
+  # Alpine release decides git's version; a pin would break the build whenever Alpine replaces that package.
+  - DL3018

@@ -1,0 +1,9 @@
+# The checks' tools and what ci/addons needs beyond the standard library (PyYAML). Pinned; Renovate bumps them.
+pyyaml==6.0.3
+ruff==0.17.4
+pytest==9.2.0
+# pytest's own requirements
+iniconfig==2.3.1
+packaging==26.3
+pluggy==1.7.0
+pygments==2.21.0

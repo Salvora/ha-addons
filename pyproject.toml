@@ -1,0 +1,15 @@
+# ruff and pytest for ci/addons and the add-on's package. The target is the add-on's Python (its base image); ci/
+# also runs on the runner's python3 in image.yml (3.12), so ruff holds ci/ to 3.12's syntax.
+[tool.ruff]
+line-length = 120
+src = ["ci", "ha-gitops-sync"]
+target-version = "py314"
+per-file-target-version = { "ci/**" = "py312" }
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "B", "UP", "SIM"]
+
+[tool.pytest.ini_options]
+testpaths = ["ci/tests", "ha-gitops-sync/tests"]
+pythonpath = ["ci", "ha-gitops-sync"]
+addopts = ["--import-mode=importlib"]

@@ -1,0 +1,79 @@
+name: image
+# Builds ha-gitops-sync's image with kaniko and pushes it to ghcr.io as the image and version its config.yaml names,
+# then releases that version here with its CHANGELOG.md section as the notes. A version is built once.
+on:
+  push:
+    branches: [main]
+    # What the image is built from, and config.yaml, whose version raise is the release.
+    paths:
+      - "ha-gitops-sync/Dockerfile"
+      - "ha-gitops-sync/requirements.txt"
+      - "ha-gitops-sync/run.sh"
+      - "ha-gitops-sync/ha_gitops_sync/**"
+      - "ha-gitops-sync/config.yaml"
+  workflow_dispatch:
+
+concurrency:
+  group: image
+  cancel-in-progress: false
+
+permissions:
+  contents: write # the release of each version
+
+defaults:
+  run:
+    shell: bash
+
+env:
+  PYTHONPATH: ci
+  SOURCE: https://github.com/Salvora/ha-addons # the public mirror Home Assistant installs from
+
+jobs:
+  image:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+
+      - name: Python packages are installed
+        run: bash ci/setup-python.sh
+
+      - name: The version is new, GHCR_PUSH_USER may push it, and its changelog section is there
+        env:
+          GHCR_PUSH_USER: ${{ vars.GHCR_PUSH_USER }}
+          GHCR_PUSH_TOKEN: ${{ secrets.GHCR_PUSH_TOKEN }}
+        run: python3 -m addons preflight ha-gitops-sync
+
+      # The base image comes from ghcr.io through the organisation's mirrors when they are set; kaniko falls back to
+      # the registry itself when a mirror does not answer.
+      - name: Build and push with kaniko
+        uses: docker://registry.gitlab.com/gitlab-ci-utils/container-images/kaniko:v1.25.19-debug@sha256:7795cec509a50a71378cc2c365f55c555ee3a05834d8eb1cd2552df5e66d44d8
+        env:
+          DOCKER_CONFIG: ${{ github.workspace }}/.docker
+        with:
+          entrypoint: /kaniko/executor
+          args: >-
+            --context ${{ github.workspace }}/ha-gitops-sync
+            --dockerfile ${{ github.workspace }}/ha-gitops-sync/Dockerfile
+            --destination ${{ env.IMAGE }}:${{ env.VERSION }}
+            --build-arg BUILD_VERSION=${{ env.VERSION }}
+            --label org.opencontainers.image.source=${{ env.SOURCE }}
+            --label org.opencontainers.image.url=${{ env.SOURCE }}
+            --label org.opencontainers.image.revision=${{ github.sha }}
+            --label org.opencontainers.image.version=${{ env.VERSION }}
+            --annotation org.opencontainers.image.source=${{ env.SOURCE }}
+            --annotation org.opencontainers.image.url=${{ env.SOURCE }}
+            --annotation org.opencontainers.image.revision=${{ github.sha }}
+            --annotation org.opencontainers.image.version=${{ env.VERSION }}
+            --cache=false
+            --snapshot-mode=redo
+            ${{ vars.GHCR_MIRROR && format('--registry-map=ghcr.io={0}', vars.GHCR_MIRROR) || '' }}
+            ${{ vars.DOCKERHUB_MIRROR && format('--registry-mirror={0}', vars.DOCKERHUB_MIRROR) || '' }}
+            --verbosity info
+
+      - name: Release
+        env:
+          TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: python3 -m addons release ha-gitops-sync
