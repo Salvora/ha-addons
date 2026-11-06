@@ -68,6 +68,10 @@ class Harness:
     def connect(self, port: int) -> http.client.HTTPSConnection:
         return http.client.HTTPSConnection("127.0.0.1", port, context=self.client, timeout=10)
 
+    def send(self, port, path, body, key, timestamp=None):
+        """A request signed for the path it is sent to."""
+        return self.post(port, path, *signed(path, body, key, timestamp))
+
     def post(self, port, path, data, headers):
         connection = self.connect(port)
         connection.request("POST", path, data, headers)
@@ -90,17 +94,17 @@ def harness(tmp_path, tls):
     harness.close()
 
 
-def signed(body, key, timestamp=None):
+def signed(path, body, key, timestamp=None):
     data = body if isinstance(body, bytes) else json.dumps(body).encode()
     stamp = str(int(time.time())) if timestamp is None else str(timestamp)
-    signature = "sha256=" + hmac.new(key, stamp.encode() + b"." + data, hashlib.sha256).hexdigest()
+    signature = "sha256=" + hmac.new(key, f"{stamp}.{path}.".encode() + data, hashlib.sha256).hexdigest()
     return data, {"Content-Type": "application/json", "X-GitOps-Timestamp": stamp, "X-GitOps-Signature": signature}
 
 
 def test_a_signed_deploy_runs_and_its_answer_comes_back(harness):
     port = harness.serve()
 
-    status, answer = harness.post(port, "/api/deploy", *signed(DEPLOY, DEPLOY_KEY))
+    status, answer = harness.send(port, "/api/deploy", DEPLOY, DEPLOY_KEY)
 
     assert status == 200
     assert answer == {"outcome": "deployed", "message": "Done."}
@@ -113,9 +117,9 @@ def test_control_endpoints_take_the_control_key(harness):
     port = harness.serve()
     now = int(time.time())
 
-    assert harness.post(port, "/api/check", *signed({}, CONTROL_KEY, now))[0] == 200
-    assert harness.post(port, "/api/reload", *signed({"target": "automation"}, CONTROL_KEY, now))[0] == 200
-    assert harness.post(port, "/api/restart", *signed({}, CONTROL_KEY, now - 1)) == (
+    assert harness.send(port, "/api/check", {}, CONTROL_KEY, now)[0] == 200
+    assert harness.send(port, "/api/reload", {"target": "automation"}, CONTROL_KEY, now)[0] == 200
+    assert harness.send(port, "/api/restart", {}, CONTROL_KEY, now - 1) == (
         200,
         {"outcome": "restarted", "message": "Back.", "seconds": 12},
     )
@@ -138,7 +142,7 @@ def test_control_endpoints_take_the_control_key(harness):
 def test_a_reload_target_names_its_service(harness, target, domain, service):
     port = harness.serve()
 
-    assert harness.post(port, "/api/reload", *signed({"target": target}, CONTROL_KEY))[0] == 200
+    assert harness.send(port, "/api/reload", {"target": target}, CONTROL_KEY)[0] == 200
     assert harness.recorder.calls == [("reload", domain, service, "Actions")]
 
 
@@ -146,9 +150,9 @@ def test_bodies_with_a_nonce_are_accepted(harness):
     port = harness.serve()
     now = int(time.time())
 
-    assert harness.post(port, "/api/check", *signed({"nonce": "4f1c9e2ab37d6e05"}, CONTROL_KEY, now))[0] == 200
-    assert harness.post(port, "/api/restart", *signed({"nonce": "b0e8a3d915c7f264"}, CONTROL_KEY, now))[0] == 200
-    assert harness.post(port, "/api/deploy", *signed(DEPLOY | {"nonce": "9d2e"}, DEPLOY_KEY, now))[0] == 200
+    assert harness.send(port, "/api/check", {"nonce": "4f1c9e2ab37d6e05"}, CONTROL_KEY, now)[0] == 200
+    assert harness.send(port, "/api/restart", {"nonce": "b0e8a3d915c7f264"}, CONTROL_KEY, now)[0] == 200
+    assert harness.send(port, "/api/deploy", DEPLOY | {"nonce": "9d2e"}, DEPLOY_KEY, now)[0] == 200
     assert harness.recorder.calls == [
         ("check", "Actions"),
         ("restart", "Actions"),
@@ -163,7 +167,7 @@ def test_bodies_with_a_nonce_are_accepted(harness):
 def test_each_endpoint_refuses_the_other_key(harness, path, body, key):
     port = harness.serve()
 
-    status, answer = harness.post(port, path, *signed(body, key))
+    status, answer = harness.send(port, path, body, key)
 
     assert (status, answer["outcome"]) == (401, "unauthorized")
     assert harness.recorder.calls == []
@@ -181,7 +185,7 @@ def test_each_endpoint_refuses_the_other_key(harness, path, body, key):
 )
 def test_a_missing_or_wrong_signature_is_refused(harness, spoil):
     port = harness.serve()
-    data, headers = signed(DEPLOY, DEPLOY_KEY)
+    data, headers = signed("/api/deploy", DEPLOY, DEPLOY_KEY)
     spoil(headers)
 
     assert harness.post(port, "/api/deploy", data, headers)[0] == 401
@@ -190,7 +194,7 @@ def test_a_missing_or_wrong_signature_is_refused(harness, spoil):
 
 def test_a_signature_over_a_different_body_is_refused(harness):
     port = harness.serve()
-    _, headers = signed(DEPLOY, DEPLOY_KEY)
+    _, headers = signed("/api/deploy", DEPLOY, DEPLOY_KEY)
 
     assert harness.post(port, "/api/deploy", json.dumps(DEPLOY | {"trigger": "manual"}).encode(), headers)[0] == 401
 
@@ -199,24 +203,24 @@ def test_a_signature_over_a_different_body_is_refused(harness):
 def test_the_timestamp_must_be_within_300_seconds_either_way(harness, age, status):
     port = harness.serve()
 
-    assert harness.post(port, "/api/check", *signed({}, CONTROL_KEY, int(time.time()) + age))[0] == status
+    assert harness.send(port, "/api/check", {}, CONTROL_KEY, int(time.time()) + age)[0] == status
 
 
 def test_a_replayed_request_is_refused(harness):
     port = harness.serve()
-    request = signed(DEPLOY, DEPLOY_KEY)
+    request = signed("/api/deploy", DEPLOY, DEPLOY_KEY)
 
     assert harness.post(port, "/api/deploy", *request)[0] == 200
     assert harness.post(port, "/api/deploy", *request)[0] == 401
     assert len(harness.recorder.calls) == 1
 
 
-def test_a_signed_check_cannot_be_replayed_as_a_restart(harness):
+def test_a_request_signed_for_one_endpoint_is_refused_on_another(harness):
     port = harness.serve()
-    request = signed({}, CONTROL_KEY)
+    request = signed("/api/check", {}, CONTROL_KEY)
 
-    assert harness.post(port, "/api/check", *request)[0] == 200
     assert harness.post(port, "/api/restart", *request)[0] == 401
+    assert harness.post(port, "/api/check", *request)[0] == 200
     assert harness.recorder.calls == [("check", "Actions")]
 
 
@@ -224,7 +228,7 @@ def test_a_signed_check_cannot_be_replayed_as_a_restart(harness):
 def test_callers_outside_the_allowed_sources_are_refused(harness, allowed):
     port = harness.serve(allowed)
 
-    assert harness.post(port, "/api/deploy", *signed(DEPLOY, DEPLOY_KEY))[0] == 401
+    assert harness.send(port, "/api/deploy", DEPLOY, DEPLOY_KEY)[0] == 401
     assert harness.recorder.calls == []
 
 
@@ -244,7 +248,7 @@ def test_malformed_requests_are_bad_requests(harness, path, body):
     port = harness.serve()
     key = DEPLOY_KEY if path == "/api/deploy" else CONTROL_KEY
 
-    status, answer = harness.post(port, path, *signed(body, key))
+    status, answer = harness.send(port, path, body, key)
 
     assert (status, answer["outcome"]) == (400, "bad-request")
     assert harness.recorder.calls == []
@@ -281,7 +285,7 @@ def test_each_deploy_outcome_has_the_contract_status(harness, outcome, status):
     harness.recorder.outcome = Outcome(outcome)
     port = harness.serve()
 
-    assert harness.post(port, "/api/deploy", *signed(DEPLOY, DEPLOY_KEY)) == (
+    assert harness.send(port, "/api/deploy", DEPLOY, DEPLOY_KEY) == (
         status,
         {"outcome": outcome, "message": "Done."},
     )

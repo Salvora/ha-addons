@@ -90,7 +90,7 @@ class Api:
             return Result(Outcome.BAD_REQUEST, f"The body must be at most {MAX_BODY} bytes, with its Content-Length.")
         body = stream.read(int(length))
         if not self.auth.verify(
-            key, source, headers.get("X-GitOps-Timestamp"), headers.get("X-GitOps-Signature"), body
+            key, source, headers.get("X-GitOps-Timestamp"), headers.get("X-GitOps-Signature"), path, body
         ):
             log.warning("refused %s from %s", path, source)
             return Result(

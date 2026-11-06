@@ -29,13 +29,15 @@ class Auth:
             address = address.ipv4_mapped
         return any(address in network for network in self.allowed_sources)
 
-    def verify(self, key: bytes, source: str, timestamp: str | None, signature: str | None, body: bytes) -> bool:
+    def verify(
+        self, key: bytes, source: str, timestamp: str | None, signature: str | None, path: str, body: bytes
+    ) -> bool:
         if not (self.source_allowed(source) and timestamp and signature and TIMESTAMP.fullmatch(timestamp)):
             return False
         now, sent = self._clock(), int(timestamp)
         if abs(now - sent) > WINDOW:
             return False
-        expected = "sha256=" + hmac.new(key, timestamp.encode() + b"." + body, hashlib.sha256).hexdigest()
+        expected = "sha256=" + hmac.new(key, f"{timestamp}.{path}.".encode() + body, hashlib.sha256).hexdigest()
         if not hmac.compare_digest(expected.encode(), signature.encode()):
             return False
         with self._lock:
