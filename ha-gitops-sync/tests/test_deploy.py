@@ -3,8 +3,9 @@ import subprocess
 
 import pytest
 
+from ha_gitops_sync.capture import Pushed
 from ha_gitops_sync.deploy import Request
-from ha_gitops_sync.state import Outcome, Switch
+from ha_gitops_sync.state import Outcome, Placed, Switch
 
 
 def checked(system, files, message="Change"):
@@ -171,6 +172,51 @@ def test_a_deploy_that_ended_leaves_nothing_to_put_back_at_the_next_start(system
     assert started.gitea.deploy_statuses == []
     assert started.state.history()[0].action == "deploy"
     assert started.state.history()[0].result.outcome is (Outcome.CHECK_FAILED if failing else Outcome.DEPLOYED)
+
+
+def test_a_merge_refused_by_an_edit_made_during_the_deploy_keeps_the_edit_for_good(system):
+    system.state.set(Switch.CAPTURE, True)
+    sha = checked(system, {"automations.yaml": "- id: 'from main'\n"})
+    system.write("scripts.yaml", "edited: before the deploy\n")
+    edit = "- id: 'edited during the deploy'\n"
+    fire = system.supervisor.fire_event
+
+    def edit_after_the_capture(event, data):
+        fire(event, data)
+        if event == "gitops_captured":
+            system.write("automations.yaml", edit)
+
+    system.supervisor.fire_event = edit_after_the_capture
+
+    result = system.deploy.run(Request(sha, "manual"), "alex")
+    system.capture.run()
+    started = system.start_again()
+
+    assert result.outcome is Outcome.ERROR
+    assert result.message.startswith(f"Deploying {sha[:7]} stopped: ")
+    assert system.gitea.deploy_statuses == [(sha, "failure")]
+    assert started.read("automations.yaml") == edit
+    assert started.remote_show("live", "automations.yaml") == edit
+    assert started.gitea.deploy_statuses == []
+    assert "restore" not in [entry.action for entry in started.state.history()]
+
+
+def test_a_deploy_left_unfinished_holds_edits_and_pushes_until_it_is_put_back(system):
+    system.state.set(Switch.CAPTURE, True)
+    live = system.head()
+    sha = checked(system, {"automations.yaml": "- id: 'from main'\n"})
+    system.state.set_placed(Placed(live, sha, "alex"))
+    system.write("scripts.yaml", "edited: true\n")
+
+    assert system.capture.run() is None
+    assert system.capture.publish().where is Pushed.HELD
+    assert system.head() == live == system.remote_rev("live")
+    started = system.start_again()
+
+    assert started.read("scripts.yaml") == "edited: true\n"
+    assert started.remote_show("live", "scripts.yaml") == "edited: true\n"
+    assert started.gitea.deploy_statuses == [(sha, "failure")]
+    assert started.state.placed() is None
 
 
 def test_an_edit_made_while_the_check_ran_survives_the_put_back(system):

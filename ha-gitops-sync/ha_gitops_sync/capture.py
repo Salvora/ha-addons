@@ -29,6 +29,7 @@ class Pushed(StrEnum):
     PULL_REQUEST = "pushed to live, waiting in the live → main pull request"
     LIVE = "pushed to live"
     WAITING = "Gitea did not answer; it is tried again later"
+    HELD = "not pushed while a deploy that never ended waits to be put back"
 
 
 @dataclass(frozen=True)
@@ -64,7 +65,7 @@ class Capture:
         self._failures = 0
 
     def run(self) -> Result | None:
-        if not self.state.is_on(Switch.CAPTURE):
+        if not self.state.is_on(Switch.CAPTURE) or self._deploy_unfinished():
             return None
         try:
             self.git.run("fetch", "--prune", "origin", timeout=FETCH_TIMEOUT)
@@ -127,6 +128,8 @@ class Capture:
 
     def publish(self, *, fetched: bool = False) -> Published:
         """Push live, and main too when that is a fast-forward; otherwise keep the live → main pull request open."""
+        if self._deploy_unfinished():
+            return Published(Pushed.HELD)
         try:
             if not fetched:
                 self.git.run("fetch", "--prune", "origin")
@@ -146,6 +149,14 @@ class Capture:
             self._retry = None
         self._failures = 0
         return published
+
+    def _deploy_unfinished(self) -> bool:
+        """A deploy whose check never ended may have left its commit in HEAD: nothing goes on top of it or to Gitea
+        until the next deploy, start or daily check puts it back."""
+        placed = self.state.placed()
+        if placed:
+            log.warning("holding edits and pushes until the deploy of %s is put back", placed.sha[:7])
+        return placed is not None
 
     def _unpublished(self) -> bool:
         """Commits not on live yet, or not on main yet, which then need the live → main pull request."""

@@ -87,7 +87,7 @@ class Deploy:
         return result
 
     def recover(self) -> None:
-        """Puts back a deploy whose config check never ended because the add-on stopped, before anything pushes it."""
+        """Puts back a deploy whose config check never ended, because the add-on stopped or putting back failed."""
         placed = self.state.placed()
         if placed is None:
             return
@@ -103,6 +103,7 @@ class Deploy:
         self._report(placed, result, placed.by)
 
     def _deploy(self, request: Request, by: str) -> Result:
+        self.recover()
         sha, short = request.sha, request.sha[:7]
         if request.trigger == "merge" and not self.state.is_on(Switch.AUTO_DEPLOY):
             return Result(Outcome.PAUSED, f"Auto-deploy is paused in the panel; {short} waits for a manual deploy.")
@@ -149,10 +150,15 @@ class Deploy:
                 pull_request=self._pull_request(),
             )
         self.state.set_placed(Placed(previous, sha, by, request.run_url, request.impact))
-        self.git.run("merge", "--quiet", *merge, sha)
-        apply_sparse(self.git)
         try:
+            self.git.run("merge", "--quiet", *merge, sha)
+            apply_sparse(self.git)
             self.supervisor.check()
+        except GitError as e:
+            kept = self._put_back(previous)
+            return Result(
+                Outcome.ERROR, f"Deploying {short} stopped: {e}; the files were put back{_except(kept)}.", files=kept
+            )
         except CheckFailed as e:
             kept = self._put_back(previous)
             return Result(
