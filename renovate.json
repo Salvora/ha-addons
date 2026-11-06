@@ -3,12 +3,12 @@
   "extends": ["local>Guzelbahce-Server/renovate"],
   "packageRules": [
     {
-      "description": "Nothing under ha-gitops-sync/ merges by itself: a change there is a release, so check.yml requires a raised version in its config.yaml and a CHANGELOG.md section for it, which a person adds to Renovate's pull request before merging.",
-      "matchFileNames": ["ha-gitops-sync/**"],
+      "description": "Nothing merges by itself, and Renovate's commits are not merged at all: this repository is mirrored to public GitHub, and they carry the organisation's own address. A person makes the update as their own commit, with a raised version and a CHANGELOG.md section when it touches ha-gitops-sync/, and Renovate closes its pull request once main has the update.",
+      "matchPackageNames": ["*"],
       "automerge": false
     },
     {
-      "description": "The add-on's base image and the image check.yml runs the tests in move together in one pull request, so the tests always run on the Python and Alpine the add-on ships with; as it touches ha-gitops-sync/, it waits for a person (rule above).",
+      "description": "The add-on's base image and the image check.yml runs the tests in move together in one pull request, so the tests always run on the Python and Alpine the add-on ships with; it waits for a person (rule above).",
       "matchDatasources": ["docker"],
       "matchPackageNames": ["ghcr.io/home-assistant/base-python"],
       "groupName": "base-python",
