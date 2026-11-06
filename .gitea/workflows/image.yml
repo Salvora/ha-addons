@@ -52,7 +52,7 @@ jobs:
       # The base image comes from ghcr.io through the organisation's mirrors when they are set; kaniko falls back to
       # the registry itself when a mirror does not answer.
       - name: Build and push with kaniko
-        uses: docker://registry.gitlab.com/gitlab-ci-utils/container-images/kaniko:v1.25.19-debug@sha256:7795cec509a50a71378cc2c365f55c555ee3a05834d8eb1cd2552df5e66d44d8
+        uses: docker://registry.gitlab.com/gitlab-ci-utils/container-images/kaniko:v1.25.21-debug@sha256:baca23a4b0548a1640c0d3876dfd54973babd02de162dd58164da7e73bcd7a0b
         env:
           DOCKER_CONFIG: ${{ github.workspace }}/.docker
         with:
