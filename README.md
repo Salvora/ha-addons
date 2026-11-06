@@ -50,6 +50,9 @@ checked and built. Every sync overwrites it, so pull requests and issues opened 
 
 - image.yml refuses a version already on a registry: raise the version in `config.yaml`, with its changelog section.
 - The release step fails: create the release by hand, as its error says.
+- The ghcr.io push worked and the Gitea push failed: image.yml refuses a rerun of that version. Copy it by hand,
+  such as `crane copy ghcr.io/salvora/ha-gitops-sync:<version> <gitea host>/<owner>/ha-gitops-sync:<version>`, and
+  create the release by hand; do not raise the version, which Home Assistant may already offer.
 - The first push of a new image: the package is private on ghcr.io; make it public once, so Home Assistant can pull it.
   In Gitea, link the new package to this repository once (the package → Settings → Link to repository): its labels
   name the GitHub mirror, so Gitea does not link it by itself.

@@ -86,13 +86,14 @@ def test_a_refused_gitea_login_stops_the_build(example, ghcr, gitea_registry, wo
     assert kaniko_login(workflow) is None
 
 
-def test_a_token_endpoint_on_another_host_gets_no_login(example, ghcr, workflow, run):
-    ghcr.realm = "https://elsewhere.example/token"
+@pytest.mark.parametrize("realm", ["https://elsewhere.example/token", "http://ghcr.io/token"])
+def test_a_token_endpoint_on_another_host_or_without_https_gets_no_login(example, ghcr, workflow, run, realm):
+    ghcr.realm = realm
 
     status, errors = run("preflight", "example")
 
     assert status == 2
-    assert "another host" in errors[0]
+    assert errors[0] == f"ghcr.io names a token endpoint that is not https on ghcr.io: {realm}"
     assert ghcr.calls == ["GET /v2/"]
 
 

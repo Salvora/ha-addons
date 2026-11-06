@@ -43,8 +43,8 @@ class Repository:
         bearer = next((dict(CHALLENGE.findall(c)) for c in offered if c.lower().startswith("bearer ")), {})
         if challenge.status != 401 or "realm" not in bearer:
             raise RegistryError(f"{host}: /v2/ answered HTTP {challenge.status} without naming its token endpoint")
-        if urlsplit(bearer["realm"]).netloc != host:
-            raise RegistryError(f"{host} names its token endpoint on another host, {bearer['realm']}: no login sent")
+        if urlsplit(bearer["realm"])[:2] != ("https", host):
+            raise RegistryError(f"{host} names a token endpoint that is not https on {host}: {bearer['realm']}")
         basic = base64.b64encode(f"{user}:{password}".encode()).decode()
         query = urlencode({"service": bearer.get("service", host), "scope": f"repository:{name}:pull,push"})
         answer = request("GET", f"{bearer['realm']}?{query}", headers={"Authorization": f"Basic {basic}"})
