@@ -6,18 +6,22 @@ cannot run.
              nothing else; an add-on this change touches raises its version above the one at BASE and has a
              CHANGELOG.md section for it. Add-ons are found as the store finds them: every config.yaml, at any
              depth, outside dot folders and rootfs/
-  preflight  before image.yml builds an add-on: CHANGELOG.md has its version's section, <image>:<version> is not on
-             ghcr.io yet, and GHCR_PUSH_USER / GHCR_PUSH_TOKEN may push it; writes kaniko's login to
-             $GITHUB_WORKSPACE/.docker/config.json, and IMAGE and VERSION to GITHUB_ENV for the steps after it
+  preflight  before image.yml builds an add-on: CHANGELOG.md has its version's section, and <image>:<version> is
+             on neither registry yet: not on ghcr.io, where GHCR_PUSH_USER / GHCR_PUSH_TOKEN must be able to push
+             it, and not on this Gitea's registry as <owner>/<image's last part>, where IMAGE_PUSH_USER /
+             IMAGE_PUSH_TOKEN must be able to push it; writes kaniko's login for both to
+             $GITHUB_WORKSPACE/.docker/config.json, and IMAGE, GITEA_IMAGE and VERSION to GITHUB_ENV
   release    the Gitea release <folder>-v<version> on GITHUB_SHA, with the version's CHANGELOG.md section as notes
 
 Run from the repository root. Environment: BASE (check, e.g. origin/main); GHCR_PUSH_USER, GHCR_PUSH_TOKEN,
-GITHUB_WORKSPACE, GITHUB_ENV (preflight); TOKEN, GITHUB_SERVER_URL, GITHUB_REPOSITORY, GITHUB_SHA (release).
+IMAGE_PUSH_USER, IMAGE_PUSH_TOKEN, GITHUB_WORKSPACE, GITHUB_ENV (preflight); TOKEN (release); GITHUB_SERVER_URL,
+GITHUB_REPOSITORY (preflight, release); GITHUB_SHA (release).
 """
 
 import argparse
 import os
 import traceback
+from dataclasses import dataclass
 from pathlib import Path
 
 from addons import release
@@ -58,33 +62,62 @@ def cmd_check(args: argparse.Namespace) -> int:
     return 1 if problems else 0
 
 
+@dataclass(frozen=True)
+class Destination:
+    """A registry image.yml pushes to, the login it pushes with (environment names), and what that token must be."""
+
+    image: str
+    user: str
+    token: str
+    needs: str
+
+
+def destinations(addon: Addon) -> tuple[Destination, ...]:
+    server = env("GITHUB_SERVER_URL").removeprefix("https://").rstrip("/")
+    owner = env("GITHUB_REPOSITORY").partition("/")[0].lower()
+    return (
+        Destination(
+            addon.image,
+            "GHCR_PUSH_USER",
+            "GHCR_PUSH_TOKEN",
+            "a GitHub classic token with write:packages, of an account that may write that package",
+        ),
+        Destination(
+            f"{server}/{owner}/{addon.image.rpartition('/')[2]}",
+            "IMAGE_PUSH_USER",
+            "IMAGE_PUSH_TOKEN",
+            "a Gitea token with write:package, of an account that may write the organisation's packages",
+        ),
+    )
+
+
 def cmd_preflight(args: argparse.Namespace) -> int:
     addon = load(args.folder)
     addon.release_notes()
-    user, password = env("GHCR_PUSH_USER"), env("GHCR_PUSH_TOKEN")
     login, outputs = Path(env("GITHUB_WORKSPACE"), ".docker", "config.json"), Path(env("GITHUB_ENV"))
-    host, _, name = addon.image.partition("/")
-    reference = f"{addon.image}:{addon.version}"
-    repository = Repository.login(host, name, user, password)
-    if repository is None:
-        error(f"{host} refused GHCR_PUSH_USER's login with GHCR_PUSH_TOKEN, a GitHub classic token")
-        return 1
-    if repository.has_tag(str(addon.version)):
-        error(
-            f"{reference} exists already, and a version is built once: raise the version in "
-            f"{addon.config.as_posix()} and add its section to {addon.changelog.as_posix()}"
-        )
-        return 1
-    if not repository.can_push():
-        error(
-            f"GHCR_PUSH_TOKEN may not push to {addon.image}: it must be a GitHub classic token with write:packages, "
-            "of an account that may write that package"
-        )
-        return 1
-    write_login(login, host, user, password)
+    targets = [(target, env(target.user), env(target.token)) for target in destinations(addon)]
+    logins = {}
+    for target, user, password in targets:
+        host, _, name = target.image.partition("/")
+        repository = Repository.login(host, name, user, password)
+        if repository is None:
+            error(f"{host} refused {target.user}'s login with {target.token}, {target.needs}")
+            return 1
+        if repository.has_tag(str(addon.version)):
+            error(
+                f"{target.image}:{addon.version} exists already, and a version is built once: raise the version in "
+                f"{addon.config.as_posix()} and add its section to {addon.changelog.as_posix()}"
+            )
+            return 1
+        if not repository.can_push():
+            error(f"{target.token} may not push to {target.image}: it must be {target.needs}")
+            return 1
+        logins[host] = (user, password)
+    write_login(login, logins)
+    ghcr, gitea = (target.image for target, _, _ in targets)
     with outputs.open("a", encoding="utf-8") as out:
-        out.write(f"IMAGE={addon.image}\nVERSION={addon.version}\n")
-    print(f"{reference} is new, and GHCR_PUSH_USER may push it")
+        out.write(f"IMAGE={ghcr}\nGITEA_IMAGE={gitea}\nVERSION={addon.version}\n")
+    print(f"version {addon.version} is new on {ghcr} and {gitea}, and both logins may push it")
     return 0
 
 

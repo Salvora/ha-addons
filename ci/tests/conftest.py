@@ -1,5 +1,5 @@
-"""The example add-on the tests start from, a git repository holding it, and fakes of ghcr.io and Gitea that answer
-ci/addons' requests the way those services do. The add-on is written by the tests rather than kept as files: the
+"""The example add-on the tests start from, a git repository holding it, and fakes of the registries and Gitea that
+answer ci/addons' requests the way those services do. The add-on is written by the tests rather than kept as files: the
 store would list a config.yaml anywhere in this repository as an add-on."""
 
 import base64
@@ -128,9 +128,13 @@ def run(capsys):
 
 
 class FakeRegistry:
-    """ghcr.io for one account: the token endpoint, manifests by tag, and blob uploads."""
+    """A container registry for one account: the challenge naming its token endpoint, the token endpoint, manifests by
+    tag, and blob uploads."""
 
-    def __init__(self, user: str, password: str) -> None:
+    def __init__(self, host: str, user: str, password: str, token_path: str, service: str, basic: str = "") -> None:
+        self.realm = f"https://{host}{token_path}"
+        self.service = service
+        self.basic_challenge = basic  # Gitea offers Basic too, ahead of Bearer
         self.basic = "Basic " + base64.b64encode(f"{user}:{password}".encode()).decode()
         self.bearer = "registry-token"
         self.may_push = True
@@ -140,7 +144,10 @@ class FakeRegistry:
 
     def __call__(self, method: str, path: str, headers: dict[str, str], body: bytes | None):
         self.calls.append(f"{method} {path}")
-        if path == "/token":
+        if path == "/v2/" and "authorization" not in headers:
+            bearer = f'Bearer realm="{self.realm}",service="{self.service}"'
+            return 401, {"WWW-Authenticate": [c for c in (self.basic_challenge, bearer) if c]}, b""
+        if path == urlsplit(self.realm).path:
             if headers.get("authorization") != self.basic:
                 return 403, {}, b'{"errors":[{"code":"DENIED","message":"denied"}]}'
             return 200, {}, json.dumps({"token": self.bearer}).encode()
@@ -197,7 +204,8 @@ class FakeNetwork:
         status, answer_headers, body = self.hosts[url.netloc](request.get_method(), url.path, headers, request.data)
         message = Message()
         for name, value in answer_headers.items():
-            message[name] = value
+            for each in value if isinstance(value, list) else [value]:
+                message[name] = each
         if status >= 400:
             raise HTTPError(request.full_url, status, "", message, io.BytesIO(body))
         return addinfourl(io.BytesIO(body), message, request.full_url, status)
@@ -212,8 +220,21 @@ def network(monkeypatch) -> FakeNetwork:
 
 @pytest.fixture
 def ghcr(network) -> FakeRegistry:
-    network.hosts["ghcr.io"] = FakeRegistry("pusher", "ghp_push")
+    network.hosts["ghcr.io"] = FakeRegistry("ghcr.io", "pusher", "ghp_push", "/token", "ghcr.io")
     return network.hosts["ghcr.io"]
+
+
+@pytest.fixture
+def gitea_registry(network) -> FakeRegistry:
+    network.hosts["git.example"] = FakeRegistry(
+        "git.example",
+        "image-pusher",
+        "gitea_push",
+        "/v2/token",
+        "container_registry",
+        'Basic realm="Gitea Container Registry"',
+    )
+    return network.hosts["git.example"]
 
 
 @pytest.fixture

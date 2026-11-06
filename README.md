@@ -28,9 +28,10 @@ checked and built. Every sync overwrites it, so pull requests and issues opened 
   `ruff check .`, `ruff format --check .`, `python3 -m pytest` and
   `PYTHONPATH=ci python3 -m addons check --base origin/main`.
 - **Release**, on a merge that changes what the image is built from or `config.yaml` (`.gitea/workflows/image.yml`,
-  or Actions → image → Run workflow): kaniko builds the image and pushes `<image>:<version>` to ghcr.io, then the
-  Gitea release `<add-on>-v<version>` carries the version's changelog section. A version already on ghcr.io is
-  refused. Home Assistant offers the update once the mirror has synced.
+  or Actions → image → Run workflow): kaniko builds the image once and pushes `<image>:<version>` to ghcr.io, which
+  Home Assistant pulls, and to this Gitea's registry, then the Gitea release `<add-on>-v<version>` carries the
+  version's changelog section. A version already on either registry is refused. Home Assistant offers the update once
+  the mirror has synced.
 
 ## Settings
 
@@ -38,6 +39,8 @@ checked and built. Every sync overwrites it, so pull requests and issues opened 
 | --- | --- | --- |
 | `GHCR_PUSH_USER` | variable | The GitHub account that owns the images |
 | `GHCR_PUSH_TOKEN` | secret | Its classic token with only `write:packages` (ghcr.io takes no fine-grained token) |
+| `IMAGE_PUSH_USER` | organisation variable | The account that pushes the organisation's images to Gitea's registry |
+| `IMAGE_PUSH_TOKEN` | organisation secret | Its token with `write:package` |
 | `GHCR_MIRROR`, `DOCKERHUB_MIRROR` | organisation variables | Optional pull-through mirrors, bare hosts, for the base images |
 | Push mirror | Settings → Mirror settings | To `github.com/Salvora/ha-addons`, with a fine-grained GitHub token that has Contents read and write on that one repository |
 | Topic | repository settings | `ci-lint-markdown` |
@@ -45,6 +48,8 @@ checked and built. Every sync overwrites it, so pull requests and issues opened 
 
 ## Runbooks
 
-- image.yml refuses a version already on ghcr.io: raise the version in `config.yaml`, with its changelog section.
+- image.yml refuses a version already on a registry: raise the version in `config.yaml`, with its changelog section.
 - The release step fails: create the release by hand, as its error says.
 - The first push of a new image: the package is private on ghcr.io; make it public once, so Home Assistant can pull it.
+  In Gitea, link the new package to this repository once (the package → Settings → Link to repository): its labels
+  name the GitHub mirror, so Gitea does not link it by itself.

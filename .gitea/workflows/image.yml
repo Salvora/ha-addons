@@ -1,6 +1,7 @@
 name: image
 # Builds ha-gitops-sync's image with kaniko and pushes it to ghcr.io as the image and version its config.yaml names,
-# then releases that version here with its CHANGELOG.md section as the notes. A version is built once.
+# which Home Assistant pulls, and to this Gitea's registry; then releases that version here with its CHANGELOG.md
+# section as the notes. A version is built once.
 on:
   push:
     branches: [main]
@@ -40,10 +41,12 @@ jobs:
       - name: Python packages are installed
         run: bash ci/setup-python.sh
 
-      - name: The version is new, GHCR_PUSH_USER may push it, and its changelog section is there
+      - name: The version is new on both registries, both logins may push it, and its changelog section is there
         env:
           GHCR_PUSH_USER: ${{ vars.GHCR_PUSH_USER }}
           GHCR_PUSH_TOKEN: ${{ secrets.GHCR_PUSH_TOKEN }}
+          IMAGE_PUSH_USER: ${{ vars.IMAGE_PUSH_USER }} # Gitea's registry refuses the run's own token
+          IMAGE_PUSH_TOKEN: ${{ secrets.IMAGE_PUSH_TOKEN }}
         run: python3 -m addons preflight ha-gitops-sync
 
       # The base image comes from ghcr.io through the organisation's mirrors when they are set; kaniko falls back to
@@ -58,6 +61,7 @@ jobs:
             --context ${{ github.workspace }}/ha-gitops-sync
             --dockerfile ${{ github.workspace }}/ha-gitops-sync/Dockerfile
             --destination ${{ env.IMAGE }}:${{ env.VERSION }}
+            --destination ${{ env.GITEA_IMAGE }}:${{ env.VERSION }}
             --build-arg BUILD_VERSION=${{ env.VERSION }}
             --label org.opencontainers.image.source=${{ env.SOURCE }}
             --label org.opencontainers.image.url=${{ env.SOURCE }}
