@@ -1,0 +1,2 @@
+# Everything is LF on every clone, whatever core.autocrlf says: the files run on Linux. text=auto keeps binaries alone.
+* text=auto eol=lf
