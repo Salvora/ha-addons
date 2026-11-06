@@ -3,7 +3,7 @@
 [tool.ruff]
 line-length = 120
 src = ["ci", "ha-gitops-sync"]
-target-version = "py314"
+target-version = "py315"
 per-file-target-version = { "ci/**" = "py312" }
 
 [tool.ruff.lint]

@@ -1,7 +1,7 @@
 # ha-gitops-sync: Home Assistant's base-python image with git and the add-on's package. Built by
 # .gitea/workflows/image.yml, which passes BUILD_VERSION, the version in config.yaml.
 # Supervisor 2026.04 and later pass no BUILD_FROM, so the base is named here, pinned by digest; Renovate moves it.
-FROM ghcr.io/home-assistant/base-python:3.14-alpine3.24@sha256:9022b084ccaa3383cf171cf26a24ce277aeacbdf3e8c5022b6d89e0492a3a897
+FROM ghcr.io/home-assistant/base-python:3.15-alpine3.24@sha256:31e73797b8c9a0ba62d33f0f46f81174b808fb42bdcb2a902cb0e8c3efdfd8fc
 
 RUN apk add --no-cache git
 

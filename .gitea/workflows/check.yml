@@ -27,7 +27,7 @@ jobs:
       - name: ruff finds nothing and the tests pass on the add-on's Python
         # The FROM of ha-gitops-sync/Dockerfile, so the tests run on the add-on's Python and Alpine; renovate.json
         # moves the two together.
-        uses: docker://ghcr.io/home-assistant/base-python:3.14-alpine3.24@sha256:9022b084ccaa3383cf171cf26a24ce277aeacbdf3e8c5022b6d89e0492a3a897
+        uses: docker://ghcr.io/home-assistant/base-python:3.15-alpine3.24@sha256:31e73797b8c9a0ba62d33f0f46f81174b808fb42bdcb2a902cb0e8c3efdfd8fc
         with:
           entrypoint: /bin/sh
           args: ci/check.sh python

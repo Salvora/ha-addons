@@ -1,5 +1,5 @@
 name: HA GitOps Sync
-version: "1.0.0"
+version: "1.0.1"
 slug: ha_gitops_sync
 description: Keeps /config and its Gitea repository in step, both ways
 url: https://github.com/Salvora/ha-addons/tree/main/ha-gitops-sync
